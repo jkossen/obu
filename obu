@@ -1,0 +1,439 @@
+#!/bin/sh
+#
+# Current version: 1.6 (2011-04-27)
+#
+# obu, an OpenBSD binary upgrade script. Trying to be handy for
+# tracking -current snapshots.
+#
+# Copyright (c) 2004-2011 by Jochem Kossen <jochem@jkossen.nl>
+#
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+#   * Redistributions of source code must retain the above copyright notice,
+#   this list of conditions and the following disclaimer.
+#   * Redistributions in binary form must reproduce the above copyright
+#   notice, this list of conditions and the following disclaimer in the
+#   documentation and/or other materials provided with the distribution.
+#   * Neither the name of the author nor the names of its contributors
+#   may be used to endorse or promote products derived from this software
+#   without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+#
+#
+# Forked from OpenBSD-binary-upgrade.sh by Han Boetes:
+#   Id: OpenBSD-binary-upgrade.sh,v 1.7 2003/07/28 23:26:39 han Exp
+#
+#   Copyright 2003 by Han Boetes <han@mijncomputer.nl>
+#   This script is released under the terms of the BSD-license
+#
+
+#######################################################################
+# default configuration, use configuration file to adjust these
+#
+# version of files to download
+VERSION='49'
+#
+NEW_BOOTBLOCKS=0 # install new bootblocks? (i386 specific)
+BOOTDISK='ad0'
+#
+# directory locations
+DOWNLOADDIR='/usr/snapshot'
+TARGETROOT='/'
+TMPROOT='/var/tmp/temproot'
+#
+# program locations
+PAGER='less' # used by sysmerge
+RSYNC='rsync -L -P --checksum --times'
+SUDO='sudo' # set to '' to disable sudo
+FTP='ftp -V'
+#
+# Select the packages you want to download (obu update)
+# You need at least bsd, etc and base.
+DOWNLOAD='bsd bsd.mp bsd.rd base etc man comp game xfont xetc xserv xbase xshare'
+#
+# Select the packages you want to install (obu upgrade). Note that this
+# also determines the order of installation, so put base last in order to
+# prevent library / utility conflicts
+INSTALL='bsd bsd.rd xserv xfont xshare xbase game comp man base'
+#
+# Select the configuration packages you want to upgrade (obu
+# updatecfg)
+ETC='etc xetc'
+#    # Set the mirror to the location from where you want to download
+# (obu update)
+MIRROR='ftp://ftp.nluug.nl/pub/OpenBSD/snapshots/i386'
+
+#######################################################################
+# Initialization, don't change.
+NEEDED_FILES=""
+CHECKED_FILES=""
+##
+
+#######################################################################
+# Functions
+
+# traps
+define_traps()
+{
+    trap error 1 2 3 4 5 6 7 8 9
+}
+
+# show usage instructions
+usage()
+{
+    cat <<EOF
+
+	USAGE:
+	obu <fetch|upgrade|upgradecfg|check|bootblocks|full> [file]
+
+	fetch:          download/update files
+	upgrade:        check and install downloaded files, install new bootblocks
+	upgradecfg:     update configuration (sysmerge)
+	check:          check downloaded files
+	bootblocks:     install new bootblocks (i386 specific)
+	full:           all of it
+
+	file:           path to configuration file to use
+
+	Copyright (c) 2004-2011 by Jochem Kossen <jochem@jkossen.nl>
+EOF
+}
+
+# mention to the user that the upgrade is done, and suggest a few smart things
+# to do
+msg_final()
+{
+    notice "Done installing files!"
+    notice "Remember to run obu upgradecfg or run sysmerge manually"
+    notice
+    notice "Also remember to look at http://www.openbsd.org/faq/current.html"
+    notice "to see if you need to do any manual labour"
+}
+
+# bail out on errors
+error()
+{
+    echo ' !!! Aborted.' >&2
+    exit 1
+}
+
+# standardized way of printing errors
+msg_error()
+{
+    echo " !!! ERROR: $*" >&2
+}
+
+# standardized way to inform the user an action is started
+msg_start()
+{
+    echo -n " >>> $* ... "
+}
+
+# standardized way to message a user
+notice()
+{
+    echo " *** NOTICE: $*"
+}
+
+# read configuration
+read_config()
+{
+    define_traps
+
+    if [ "$1" ]; then
+	    . "$1"
+    else
+	    [ -r '/etc/oburc' ] && . '/etc/oburc' || true
+	    [ -r "$HOME/.oburc" ] && . "$HOME/.oburc" || true
+    fi
+}
+
+# The DOWNLOAD and INSTALL configuration variables contain set names (without
+# the version and extension). This function converts them into filenames
+sets_to_filenames()
+{
+    FILES=''
+    for file in $DOWNLOAD; do
+        case $file in
+            bsd|bsd.rd|bsd.mp)
+                FILES="$FILES $file"
+                ;;
+            *)
+                FILES="$FILES $file$VERSION.tgz"
+                ;;
+        esac
+    done
+}
+
+# By checksumming the existing files against the SUMFILE, determine which files
+# need to be downloaded
+determine_needed_files()
+{
+    define_traps
+
+    for FILE in $FILES; do
+        msg_start "Checksumming $FILE to determine if it needs to be downloaded: "
+        check_sum_file $FILE
+        if [ "$?" != "0" ]; then
+            echo "yes"
+            NEEDED_FILES="$NEEDED_FILES $FILE"
+        else
+            echo "no"
+            CHECKED_FILES="$CHECKED_FILES $FILE"
+        fi
+    done
+}
+
+# Download the latest snapshot files
+download_files()
+{
+    define_traps
+
+    DFUN="download_file_file"
+
+    [ ! -d "$DOWNLOADDIR" ] && mkdir -p "$DOWNLOADDIR"
+
+    cd "$DOWNLOADDIR"
+
+    msg_start "Fetching from $MIRROR:"
+
+    if [ ${MIRROR#file://} != $MIRROR ]; then
+        download_files file
+    elif [ ${MIRROR#rsync://} != $MIRROR ]; then
+        DFUN="download_file_rsync"
+    elif [ ${MIRROR#ftp://} != $MIRROR ]; then
+        DFUN="download_file_ftp"
+    else
+        msg_error "download method not supported"
+        return 1
+    fi
+
+    msg_start "Fetching SHA256 from $MIRROR:"
+    $DFUN SHA256
+
+    determine_needed_files
+
+    if [ "$NEEDED_FILES" = "" ]; then
+        notice "No new files found at $MIRROR"
+    else
+        for FILE in $NEEDED_FILES; do
+            $DFUN $FILE
+        done
+    fi
+}
+
+# Download a file from a local directory (or network mount)
+download_file_file()
+{
+    echo -n "         $i ... "
+    if [ -e "$DOWNLOADDIR/$i" -a ! "$DOWNLOADDIR/$i" -ot "${MIRROR#file://}/$i" ]; then
+        echo "skipped (target file not older than source file)"
+    else
+        cp -fp "${MIRROR#file://}/$i" "$DOWNLOADDIR/$i"
+        echo "done"
+    fi
+}
+
+# Download a file through FTP
+download_file_ftp()
+{
+    echo -n "         $1 ... "
+    $FTP "$MIRROR/$1" -o "$DOWNLOADDIR/$i"
+    echo "done"
+}
+
+# Download a file through rsync
+download_file_rsync()
+{
+    echo -n "         $1 ... "
+    $RSYNC "$MIRROR/$1" "$DOWNLOADDIR/$i"
+    echo "done"
+}
+
+# Check if the checksum of the downloaded file is correct
+check_sum_file()
+{
+    SUM_IS=$(sha256 -q "$DOWNLOADDIR/$1")
+    SUM_SHOULDBE=$(grep \($1\) "$DOWNLOADDIR/SHA256" | awk '{print $NF}')
+
+    if [ "$SUM_IS" != "$SUM_SHOULDBE" ]; then
+        if [ -z "$SUM_SHOULDBE" ]; then
+            return 2
+        else
+            return 1
+        fi
+    else
+        return 0
+    fi
+}
+
+# check all downloaded files against the sums in SHA256
+check_sum_all()
+{
+    CHECK_FILES=""
+
+    define_traps
+
+    # only checksum file if it wasn't already checked
+    for i in $FILES; do
+        NEED_CHECK=1
+        for FILE in $CHECKED_FILES; do
+            if [ "$i" = "$FILE" ]; then
+                NEED_CHECK=0
+            fi
+        done
+
+        if [ "$NEED_CHECK" = 1 ]; then
+            CHECK_FILES="$CHECK_FILES $i"
+        fi
+    done
+
+    if [ "$CHECK_FILES" != "" ]; then
+        notice 'Testing if all checksums are valid.'
+        for i in $CHECK_FILES; do
+            msg_start "$i"
+            check_sum_file "$i"
+            if [ "$?" = "1" ]; then
+                msg_error "$i: checksum mismatch" >&2
+                return 1
+            elif [ "$?" = "2" ]; then
+                notice "WARNING: no checksum info available for $i"
+            else
+                echo "OK"
+            fi
+        done
+    fi
+}
+
+# install downloaded files
+install_files()
+{
+    define_traps
+
+    for i in $INSTALL; do
+        case $i in
+            bsd|bsd.mp|bsd.rd)
+                # just to be sure, back up old kernel
+                if [ -e "$TARGETROOT$i" ]; then
+                    msg_start "Backing up $TARGETROOT$i to $TARGETROOT$i.old"
+                    $SUDO mv -f "$TARGETROOT$i" "$TARGETROOT$i.old"
+                    echo "done"
+                fi
+
+                msg_start "Installing kernel $i"
+                $SUDO cp "$DOWNLOADDIR/$i" "$TARGETROOT$i"
+                echo "done"
+
+                # rename /bsd.mp to /bsd
+                if [ "$i" = "bsd.mp" ]; then
+                    msg_start "Renaming $TARGETROOT$i to ${TARGETROOT}bsd"
+                    $SUDO mv -f "$TARGETROOT$i" "${TARGETROOT}bsd"
+                    echo "done"
+                fi
+                ;;
+            etc|xetc)
+                ;;
+            *)
+                msg_start "Installing set $i"
+                $SUDO tar zxpf "$DOWNLOADDIR/$i$VERSION.tgz" -C "$TARGETROOT"
+                echo "done"
+                ;;
+        esac
+    done
+}
+
+# install new boot blocks (i386 specific)
+install_bootblocks()
+{
+    define_traps
+
+    if [ $NEW_BOOTBLOCKS -eq 1 ]; then
+        msg_start "Backing up old ${TARGETROOT}boot to ${TARGETROOT}boot.old"
+        $SUDO cp -f ${TARGETROOT}boot ${TARGETROOT}boot.old
+        echo "done"
+
+        msg_start "Updating ${TARGETROOT}boot"
+        $SUDO cp -f ${TARGETROOT}usr/mdec/boot ${TARGETROOT}boot
+        echo "done"
+
+        msg_start "Installing new bootblocks on $BOOTDISK"
+        $SUDO ${TARGETROOT}usr/mdec/installboot ${TARGETROOT}boot ${TARGETROOT}usr/mdec/biosboot $BOOTDISK
+        echo "done"
+    else
+        notice "NEW_BOOTBLOCKS disabled. Not installing new MBR."
+    fi
+}
+
+# use sysmerge to update configuration files
+merge_etc()
+{
+    define_traps
+
+    X="-s"
+    for i in $ETC; do
+        notice "Merging configuration file $i$VERSION.tgz"
+        if [ "$i" = "xetc" ]; then
+            X="-x"
+        fi
+        $SUDO sysmerge $X $DOWNLOADDIR/$i$VERSION.tgz
+    done
+}
+
+# run
+case $1 in
+    bootblocks)
+        read_config "$2"
+        install_bootblocks
+        ;;
+    check)
+        read_config "$2"
+        sets_to_filenames
+        check_sum_all
+        ;;
+    update)
+        read_config "$2"
+        sets_to_filenames
+        download_files
+        ;;
+    upgrade)
+        read_config "$2"
+        sets_to_filenames
+        check_sum_all
+        install_files
+        install_bootblocks
+        msg_final
+        ;;
+    upgradecfg)
+        read_config "$2"
+        sets_to_filenames
+        merge_etc
+        ;;
+    full)
+        read_config "$2"
+        sets_to_filenames
+        download_files
+        check_sum_all
+        install_files
+        install_bootblocks
+        merge_etc
+        ;;
+    *)
+        msg_error "unknown option: $1"
+        usage
+        error
+        ;;
+esac
