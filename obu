@@ -182,7 +182,7 @@ determine_needed_files()
 
     for FILE in $FILES; do
         msg_start "Checksumming $FILE to determine if it needs to be downloaded: "
-        check_sum_file $FILE
+        check_sum_file $FILE >/dev/null 2>&1
         if [ "$?" != "0" ]; then
             echo "yes"
             NEEDED_FILES="$NEEDED_FILES $FILE"
@@ -227,6 +227,14 @@ download_files()
     else
         for FILE in $NEEDED_FILES; do
             $DFUN $FILE
+            check_sum_file $FILE
+
+            if [ "$?" = "1" ]; then
+                abort
+            fi
+
+            # check done, put FILE in $CHECKED_FILES
+            CHECKED_FILES="$CHECKED_FILES $FILE"
         done
     fi
 }
@@ -267,11 +275,15 @@ check_sum_file()
 
     if [ "$SUM_IS" != "$SUM_SHOULDBE" ]; then
         if [ -z "$SUM_SHOULDBE" ]; then
+            # no checksum known
+            notice "WARNING: no checksum info available for $FILE"
             return 2
         else
+            msg_error "$FILE: checksum mismatch" >&2
             return 1
         fi
     else
+        echo "OK"
         return 0
     fi
 }
@@ -279,9 +291,9 @@ check_sum_file()
 # check all downloaded files against the sums in SHA256
 check_sum_all()
 {
-    CHECK_FILES=""
-
     define_traps
+
+    CHECK_FILES=""
 
     # only checksum file if it wasn't already checked
     for FILE in $FILES; do
@@ -301,15 +313,16 @@ check_sum_all()
         notice 'Checksumming all files to be sure they are not corrupt.'
         for FILE in $CHECK_FILES; do
             msg_start "$FILE"
-            check_sum_file "$FILE"
-            if [ "$?" = "1" ]; then
-                echo "FAIL"
-                msg_error "$FILE: checksum mismatch" >&2
-                abort
-            elif [ "$?" = "2" ]; then
-                notice "WARNING: no checksum info available for $FILE"
-            else
+            check_sum_file "$FILE" >/dev/null 2>&1
+            RET=$?
+            if [ "$RET" = "0" ]; then
                 echo "OK"
+            elif [ "$RET" = "1" ]; then
+                echo "FAIL"
+            elif [ "$RET" = "2" ]; then
+                echo "NO CHECKSUM AVAILABLE"
+            else
+                echo "Unknown return status. This is a bug."
             fi
         done
     fi
