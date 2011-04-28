@@ -34,7 +34,9 @@ full:           all of it
 file:           path to configuration file to use
 
 FEATURES:
-    * Able to download via either FTP, RSYNC or filesystem (eg NFS mounts)
+
+    * Able to download via either HTTP, FTP, RSYNC or filesystem (eg NFS
+      mounts)
     * Ability to install into a custom root (eg NFS mounts)
     * Verifies if downloaded files are corrupt (by checking SHA256 sums)
     * Only downloads files which do not match the checksum
