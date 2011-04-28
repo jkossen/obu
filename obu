@@ -31,7 +31,8 @@
 # version of files to download
 VERSION='49'
 #
-NEW_BOOTBLOCKS=0 # install new bootblocks? (i386 specific)
+# install new bootblocks? (i386 specific)
+NEW_BOOTBLOCKS=0
 BOOTDISK='ad0'
 #
 # directory locations
@@ -66,7 +67,6 @@ MIRROR='ftp://ftp.nluug.nl/pub/OpenBSD/snapshots/i386'
 FILES=""
 NEEDED_FILES=""
 CHECKED_FILES=""
-##
 
 #######################################################################
 # Functions
@@ -223,11 +223,11 @@ download_files()
 # Download a file from a local directory (or network mount)
 download_file_file()
 {
-    echo -n "         $i ... "
-    if [ -e "$DOWNLOADDIR/$i" -a ! "$DOWNLOADDIR/$i" -ot "${MIRROR#file://}/$i" ]; then
+    echo -n "         $1 ... "
+    if [ -e "$DOWNLOADDIR/$1" -a ! "$DOWNLOADDIR/$1" -ot "${MIRROR#file://}/$1" ]; then
         echo "skipped (target file not older than source file)"
     else
-        cp -fp "${MIRROR#file://}/$i" "$DOWNLOADDIR/$i"
+        cp -fp "${MIRROR#file://}/$1" "$DOWNLOADDIR/$1"
         echo "done"
     fi
 }
@@ -236,7 +236,7 @@ download_file_file()
 download_file_ftp()
 {
     echo -n "         $1 ... "
-    $FTP "$MIRROR/$1" -o "$DOWNLOADDIR/$i"
+    $FTP "$MIRROR/$1" -o "$DOWNLOADDIR/$1"
     echo "done"
 }
 
@@ -244,7 +244,7 @@ download_file_ftp()
 download_file_rsync()
 {
     echo -n "         $1 ... "
-    $RSYNC "$MIRROR/$1" "$DOWNLOADDIR/$i"
+    $RSYNC "$MIRROR/$1" "$DOWNLOADDIR/$1"
     echo "done"
 }
 
@@ -273,29 +273,29 @@ check_sum_all()
     define_traps
 
     # only checksum file if it wasn't already checked
-    for i in $FILES; do
+    for FILE in $FILES; do
         NEED_CHECK=1
-        for FILE in $CHECKED_FILES; do
-            if [ "$i" = "$FILE" ]; then
+        for CHECKED_FILE in $CHECKED_FILES; do
+            if [ "$FILE" = "$CHECKED_FILE" ]; then
                 NEED_CHECK=0
             fi
         done
 
         if [ "$NEED_CHECK" = 1 ]; then
-            CHECK_FILES="$CHECK_FILES $i"
+            CHECK_FILES="$CHECK_FILES $FILE"
         fi
     done
 
     if [ "$CHECK_FILES" != "" ]; then
         notice 'Testing if all checksums are valid.'
         for i in $CHECK_FILES; do
-            msg_start "$i"
-            check_sum_file "$i"
+            msg_start "$FILE"
+            check_sum_file "$FILE"
             if [ "$?" = "1" ]; then
-                msg_error "$i: checksum mismatch" >&2
+                msg_error "$FILE: checksum mismatch" >&2
                 error
             elif [ "$?" = "2" ]; then
-                notice "WARNING: no checksum info available for $i"
+                notice "WARNING: no checksum info available for $FILE"
             else
                 echo "OK"
             fi
@@ -308,32 +308,32 @@ install_files()
 {
     define_traps
 
-    for i in $INSTALL; do
-        case $i in
+    for FILE in $INSTALL; do
+        case $FILE in
             bsd|bsd.mp|bsd.rd)
                 # just to be sure, back up old kernel
-                if [ -e "$TARGETROOT$i" ]; then
-                    msg_start "Backing up $TARGETROOT$i to $TARGETROOT$i.old"
-                    $SUDO mv -f "$TARGETROOT$i" "$TARGETROOT$i.old"
+                if [ -e "$TARGETROOT$FILE" ]; then
+                    msg_start "Backing up $TARGETROOT$FILE to $TARGETROOT$FILE.old"
+                    $SUDO mv -f "$TARGETROOT$FILE" "$TARGETROOT$FILE.old"
                     echo "done"
                 fi
 
-                msg_start "Installing kernel $i"
-                $SUDO cp "$DOWNLOADDIR/$i" "$TARGETROOT$i"
+                msg_start "Installing kernel $FILE"
+                $SUDO cp "$DOWNLOADDIR/$FILE" "$TARGETROOT$FILE"
                 echo "done"
 
                 # rename /bsd.mp to /bsd
-                if [ "$i" = "bsd.mp" ]; then
-                    msg_start "Renaming $TARGETROOT$i to ${TARGETROOT}bsd"
-                    $SUDO mv -f "$TARGETROOT$i" "${TARGETROOT}bsd"
+                if [ "$FILE" = "bsd.mp" ]; then
+                    msg_start "Renaming $TARGETROOT$FILE to ${TARGETROOT}bsd"
+                    $SUDO mv -f "$TARGETROOT$FILE" "${TARGETROOT}bsd"
                     echo "done"
                 fi
                 ;;
             etc|xetc)
                 ;;
             *)
-                msg_start "Installing set $i"
-                $SUDO tar zxpf "$DOWNLOADDIR/$i$VERSION.tgz" -C "$TARGETROOT"
+                msg_start "Installing set $FILE"
+                $SUDO tar zxpf "$DOWNLOADDIR/$FILE$VERSION.tgz" -C "$TARGETROOT"
                 echo "done"
                 ;;
         esac
@@ -368,12 +368,12 @@ merge_etc()
     define_traps
 
     X="-s"
-    for i in $ETC; do
-        notice "Merging configuration file $i$VERSION.tgz"
-        if [ "$i" = "xetc" ]; then
+    for FILE in $ETC; do
+        notice "Merging configuration file $FILE$VERSION.tgz"
+        if [ "$FILE" = "xetc" ]; then
             X="-x"
         fi
-        $SUDO sysmerge $X $DOWNLOADDIR/$i$VERSION.tgz
+        $SUDO sysmerge $X $DOWNLOADDIR/$FILE$VERSION.tgz
     done
 }
 
