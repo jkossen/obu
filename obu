@@ -304,16 +304,9 @@ check_sum_all()
         done
 
         if [ "$NEED_CHECK" = 1 ]; then
-            CHECK_FILES="$CHECK_FILES $FILE"
+            check_sum_file "$FILE"
         fi
     done
-
-    if [ "$CHECK_FILES" != "" ]; then
-        notice 'Checksumming all files to be sure they are not corrupt.'
-        for FILE in $CHECK_FILES; do
-            check_sum_file "$FILE"
-        done
-    fi
 }
 
 # install downloaded files
