@@ -212,6 +212,8 @@ download_files()
         DFUN="download_file_rsync"
     elif [ ${MIRROR#ftp://} != $MIRROR ]; then
         DFUN="download_file_ftp"
+    elif [ ${MIRROR#http://} != $MIRROR ]; then
+        DFUN="download_file_ftp"
     else
         msg_error "download method not supported"
         abort
@@ -266,21 +268,22 @@ download_file_rsync()
 # Check if the checksum of the downloaded file is correct
 check_sum_file()
 {
-    SUM_IS=$(sha256 -q "$DOWNLOADDIR/$1")
+    msg_start "Comparing checksum for $FILE"
     SUM_SHOULDBE=$(grep \($1\) "$DOWNLOADDIR/SHA256" | awk '{print $NF}')
 
-    if [ "$SUM_IS" != "$SUM_SHOULDBE" ]; then
-        if [ -z "$SUM_SHOULDBE" ]; then
-            # no checksum known
-            notice "WARNING: no checksum info available for $FILE"
-            return 2
+    if [ -z "$SUM_SHOULDBE" ]; then
+        # no checksum known
+        echo "unknown"
+        return 2
+    else
+        SUM_IS=$(sha256 -q "$DOWNLOADDIR/$1")
+        if [ "$SUM_IS" = "$SUM_SHOULDBE" ]; then
+            echo "OK"
+            return 0
         else
-            msg_error "$FILE: checksum mismatch" >&2
+            echo "MISMATCH"
             return 1
         fi
-    else
-        echo "OK"
-        return 0
     fi
 }
 
@@ -308,18 +311,7 @@ check_sum_all()
     if [ "$CHECK_FILES" != "" ]; then
         notice 'Checksumming all files to be sure they are not corrupt.'
         for FILE in $CHECK_FILES; do
-            msg_start "$FILE"
-            check_sum_file "$FILE" >/dev/null 2>&1
-            RET=$?
-            if [ "$RET" = "0" ]; then
-                echo "OK"
-            elif [ "$RET" = "1" ]; then
-                echo "FAIL"
-            elif [ "$RET" = "2" ]; then
-                echo "NO CHECKSUM AVAILABLE"
-            else
-                echo "Unknown return status. This is a bug."
-            fi
+            check_sum_file "$FILE"
         done
     fi
 }
@@ -357,7 +349,7 @@ install_files()
     if [ "$BSD" != 'bsd' ]; then
         if [ -f "$TARGETROOT$BSD" ]; then
             msg_start "Renaming $TARGETROOT$BSD to ${TARGETROOT}bsd"
-            mv -f "$TARGETROOT$BSD" "${TARGETROOT}bsd"
+            $SUDO mv -f "$TARGETROOT$BSD" "${TARGETROOT}bsd"
             echo "done"
         else
             msg_error "specified kernel file $BSD does not exist"
