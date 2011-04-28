@@ -38,6 +38,9 @@ FEATURES:
     * Able to download via either HTTP, FTP, RSYNC or filesystem (eg NFS
       mounts)
     * Ability to install into a custom root (eg NFS mounts)
+    * Ability to disable checksumming on obu upgrade. Comes in handy when
+      downloading snapshots on one machine, share them via NFS to many others
+      and do obu upgrade there.
     * Verifies if downloaded files are corrupt (by checking SHA256 sums)
     * Only downloads files which do not match the checksum
     * Only installs if all files match their checksums
