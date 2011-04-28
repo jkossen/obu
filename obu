@@ -73,12 +73,13 @@ INSTALL='bsd bsd.rd xserv xfont xshare xbase game comp man base'
 # Select the configuration packages you want to upgrade (obu
 # updatecfg)
 ETC='etc xetc'
-#    # Set the mirror to the location from where you want to download
-# (obu update)
+#
+# Set the mirror to the location from where you want to download
 MIRROR='ftp://ftp.nluug.nl/pub/OpenBSD/snapshots/i386'
 
 #######################################################################
 # Initialization, don't change.
+FILES=""
 NEEDED_FILES=""
 CHECKED_FILES=""
 ##
@@ -98,11 +99,11 @@ usage()
     cat <<EOF
 
 	USAGE:
-	obu <fetch|upgrade|upgradecfg|check|bootblocks|full> [file]
+	obu <update|upgrade|mergecfg|check|bootblocks|full> [file]
 
-	fetch:          download/update files
+	update:         download/update files
 	upgrade:        check and install downloaded files, install new bootblocks
-	upgradecfg:     update configuration (sysmerge)
+	mergecfg:       update configuration (sysmerge)
 	check:          check downloaded files
 	bootblocks:     install new bootblocks (i386 specific)
 	full:           all of it
@@ -118,7 +119,7 @@ EOF
 msg_final()
 {
     notice "Done installing files!"
-    notice "Remember to run obu upgradecfg or run sysmerge manually"
+    notice "Remember to run obu mergecfg or run sysmerge manually"
     notice
     notice "Also remember to look at http://www.openbsd.org/faq/current.html"
     notice "to see if you need to do any manual labour"
@@ -166,14 +167,13 @@ read_config()
 # the version and extension). This function converts them into filenames
 sets_to_filenames()
 {
-    FILES=''
-    for file in $DOWNLOAD; do
-        case $file in
+    for FILE in $DOWNLOAD; do
+        case $FILE in
             bsd|bsd.rd|bsd.mp)
-                FILES="$FILES $file"
+                FILES="$FILES $FILE"
                 ;;
             *)
-                FILES="$FILES $file$VERSION.tgz"
+                FILES="$FILES $FILE$VERSION.tgz"
                 ;;
         esac
     done
@@ -417,7 +417,7 @@ case $1 in
         install_bootblocks
         msg_final
         ;;
-    upgradecfg)
+    mergecfg)
         read_config "$2"
         sets_to_filenames
         merge_etc
