@@ -303,6 +303,7 @@ check_sum_all()
             msg_start "$FILE"
             check_sum_file "$FILE"
             if [ "$?" = "1" ]; then
+                echo "FAIL"
                 msg_error "$FILE: checksum mismatch" >&2
                 error
             elif [ "$?" = "2" ]; then
