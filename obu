@@ -219,7 +219,7 @@ download_files()
         DFUN="download_file_ftp"
     else
         msg_error "download method not supported"
-        return 1
+        error
     fi
 
     msg_start "Fetching SHA256 from $MIRROR:"
@@ -309,7 +309,7 @@ check_sum_all()
             check_sum_file "$i"
             if [ "$?" = "1" ]; then
                 msg_error "$i: checksum mismatch" >&2
-                return 1
+                error
             elif [ "$?" = "2" ]; then
                 notice "WARNING: no checksum info available for $i"
             else
