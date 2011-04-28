@@ -26,7 +26,7 @@
 #
 
 #######################################################################
-# default configuration, use configuration file to adjust these
+# default configuration, use configuration file to override these
 #
 # version of files to download
 VERSION='49'
@@ -55,6 +55,10 @@ DOWNLOAD='bsd bsd.mp bsd.rd base etc man comp game xfont xetc xserv xbase xshare
 # prevent library / utility conflicts
 INSTALL='bsd bsd.rd xserv xfont xshare xbase game comp man base'
 #
+# This determines which file will be set to /bsd. If you set it to 'bsd.mp' for
+# example, that file will be renamed to bsd.
+BSD='bsd'
+#
 # Select the configuration packages you want to upgrade (obu
 # updatecfg)
 ETC='etc xetc'
@@ -64,8 +68,15 @@ MIRROR='ftp://ftp.nluug.nl/pub/OpenBSD/snapshots/i386'
 
 #######################################################################
 # Initialization, don't change.
+
+# Container for the actual filenames (configuration defines sets, not
+# filenames)
 FILES=""
+
+# Container for filenames which need to be downloaded
 NEEDED_FILES=""
+
+# Container for filenames which are already checksummed
 CHECKED_FILES=""
 
 #######################################################################
@@ -314,20 +325,13 @@ install_files()
                 # just to be sure, back up old kernel
                 if [ -e "$TARGETROOT$FILE" ]; then
                     msg_start "Backing up $TARGETROOT$FILE to $TARGETROOT$FILE.old"
-                    $SUDO mv -f "$TARGETROOT$FILE" "$TARGETROOT$FILE.old"
+                    $SUDO cp -f "$TARGETROOT$FILE" "$TARGETROOT$FILE.old"
                     echo "done"
                 fi
 
-                msg_start "Installing kernel $FILE"
-                $SUDO cp "$DOWNLOADDIR/$FILE" "$TARGETROOT$FILE"
+                msg_start "Installing kernel file $FILE"
+                $SUDO cp -f "$DOWNLOADDIR/$FILE" "$TARGETROOT$FILE"
                 echo "done"
-
-                # rename /bsd.mp to /bsd
-                if [ "$FILE" = "bsd.mp" ]; then
-                    msg_start "Renaming $TARGETROOT$FILE to ${TARGETROOT}bsd"
-                    $SUDO mv -f "$TARGETROOT$FILE" "${TARGETROOT}bsd"
-                    echo "done"
-                fi
                 ;;
             etc|xetc)
                 ;;
@@ -338,6 +342,18 @@ install_files()
                 ;;
         esac
     done
+
+    # replace /bsd with the specified kernel file
+    if [ "$BSD" != 'bsd' ]; then
+        if [ -f "$TARGETROOT$BSD" ]; then
+            msg_start "Renaming $TARGETROOT$BSD to ${TARGETROOT}bsd"
+            mv -f "$TARGETROOT$BSD" "${TARGETROOT}bsd"
+            echo "done"
+        else
+            msg_error "specified kernel file $BSD does not exist"
+            error
+        fi
+    fi
 }
 
 # install new boot blocks (i386 specific)
@@ -377,6 +393,7 @@ merge_etc()
     done
 }
 
+#######################################################################
 # run
 case $1 in
     bootblocks)
