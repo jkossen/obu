@@ -32,7 +32,7 @@
 VERSION='49'
 #
 # install new bootblocks? (i386 specific)
-NEW_BOOTBLOCKS=0
+NEW_BOOTBLOCKS="no"
 BOOTDISK='ad0'
 #
 # directory locations
@@ -41,30 +41,36 @@ TARGETROOT='/'
 TMPROOT='/var/tmp/temproot'
 #
 # program locations
-PAGER='less' # used by sysmerge
+PAGER='less'
 RSYNC='rsync -L -P --checksum --times'
-SUDO='sudo' # set to '' to disable sudo
+# set to '' to disable sudo
+SUDO='sudo'
 FTP='ftp -V'
 #
-# Select the packages you want to download (obu update)
-# You need at least bsd, etc and base.
+# Select the packages you want to download (obu update). You need at least bsd,
+# etc and base.
 DOWNLOAD='bsd bsd.mp bsd.rd base etc man comp game xfont xetc xserv xbase xshare'
 #
-# Select the packages you want to install (obu upgrade). Note that this
-# also determines the order of installation, so put base last in order to
-# prevent library / utility conflicts
+# Select the packages you want to install (obu upgrade). Note that this also
+# determines the order of installation, so put base last in order to prevent
+# library / utility conflicts
 INSTALL='bsd bsd.rd xserv xfont xshare xbase game comp man base'
 #
 # This determines which file will be set to /bsd. If you set it to 'bsd.mp' for
 # example, that file will be renamed to bsd.
 BSD='bsd'
 #
-# Select the configuration packages you want to upgrade (obu
-# updatecfg)
+# Select the configuration packages you want to upgrade (obu updatecfg)
 ETC='etc xetc'
 #
 # Set the mirror to the location from where you want to download
 MIRROR='ftp://ftp.nluug.nl/pub/OpenBSD/snapshots/i386'
+#
+# Checksums are calculated when downloading, do you want to check them when
+# executing 'obu upgrade' as well? You might want to set it to 'no' if you
+# download snapshots on one machine and execute upgrade on many machines using
+# NFS mounts
+CHECKSUM_ON_UPGRADE='yes'
 
 #######################################################################
 # Initialization, don't change.
@@ -222,9 +228,12 @@ download_files()
         abort
     fi
 
+    # First download checksum file
     msg_start "Fetching SHA256 from $MIRROR:"
     $DFUN SHA256
 
+    # Use checksum file to see which files are outdated/corrupt and need to be
+    # downloaded
     determine_needed_files
 
     if [ "$NEEDED_FILES" = "" ]; then
@@ -359,7 +368,7 @@ install_bootblocks()
 {
     define_traps
 
-    if [ $NEW_BOOTBLOCKS -eq 1 ]; then
+    if [ $NEW_BOOTBLOCKS = "yes" ]; then
         msg_start "Backing up old ${TARGETROOT}boot to ${TARGETROOT}boot.old"
         $SUDO cp -f ${TARGETROOT}boot ${TARGETROOT}boot.old
         echo "done"
@@ -411,7 +420,7 @@ case $1 in
     upgrade)
         read_config "$2"
         sets_to_filenames
-        check_sum_all
+        [ $CHECKSUM_ON_UPGRADE = "yes" ] && check_sum_all
         install_files
         install_bootblocks
         msg_final
@@ -425,7 +434,6 @@ case $1 in
         read_config "$2"
         sets_to_filenames
         download_files
-        check_sum_all
         install_files
         install_bootblocks
         merge_etc
