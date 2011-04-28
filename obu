@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Current version: 1.6 (2011-04-27)
+# Current version: 1.7 (2011-04-28)
 #
 # obu, an OpenBSD binary upgrade script. Trying to be handy for
 # tracking -current snapshots.
