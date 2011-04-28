@@ -243,12 +243,8 @@ download_files()
 download_file_file()
 {
     echo -n "         $1 ... "
-    if [ -e "$DOWNLOADDIR/$1" -a ! "$DOWNLOADDIR/$1" -ot "${MIRROR#file://}/$1" ]; then
-        echo "skipped (target file not older than source file)"
-    else
-        cp -fp "${MIRROR#file://}/$1" "$DOWNLOADDIR/$1"
-        echo "done"
-    fi
+    cp -fp "${MIRROR#file://}/$1" "$DOWNLOADDIR/$1"
+    echo "done"
 }
 
 # Download a file through FTP
