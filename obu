@@ -150,8 +150,11 @@ read_config()
 {
     define_traps
 
-    if [ "$1" ]; then
+    if [ ! -z "$1" -a -f "$1" ]; then
 	    . "$1"
+    elif [ ! -z "$1" ]; then
+        msg_error "$1 is no readable file"
+        abort
     else
 	    [ -r '/etc/oburc' ] && . '/etc/oburc' || true
 	    [ -r "$HOME/.oburc" ] && . "$HOME/.oburc" || true
