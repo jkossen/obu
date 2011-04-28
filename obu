@@ -85,7 +85,7 @@ CHECKED_FILES=""
 # traps
 define_traps()
 {
-    trap error 1 2 3 4 5 6 7 8 9
+    trap abort 1 2 3 4 5 6 7 8 9
 }
 
 # show usage instructions
@@ -121,7 +121,7 @@ msg_final()
 }
 
 # bail out on errors
-error()
+abort()
 {
     echo ' !!! Aborted.' >&2
     exit 1
@@ -214,7 +214,7 @@ download_files()
         DFUN="download_file_ftp"
     else
         msg_error "download method not supported"
-        error
+        abort
     fi
 
     msg_start "Fetching SHA256 from $MIRROR:"
@@ -305,7 +305,7 @@ check_sum_all()
             if [ "$?" = "1" ]; then
                 echo "FAIL"
                 msg_error "$FILE: checksum mismatch" >&2
-                error
+                abort
             elif [ "$?" = "2" ]; then
                 notice "WARNING: no checksum info available for $FILE"
             else
@@ -352,7 +352,7 @@ install_files()
             echo "done"
         else
             msg_error "specified kernel file $BSD does not exist"
-            error
+            abort
         fi
     fi
 }
@@ -436,6 +436,6 @@ case $1 in
     *)
         msg_error "unknown option: $1"
         usage
-        error
+        abort
         ;;
 esac
