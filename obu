@@ -119,11 +119,11 @@ EOF
 # to do
 msg_final()
 {
-    notice "Done installing files!"
-    notice "Remember to run obu mergecfg or run sysmerge manually"
-    notice
-    notice "Also remember to look at http://www.openbsd.org/faq/current.html"
-    notice "to see if you need to do any manual labour"
+    msg_notice "Done installing files!"
+    msg_notice "Remember to run obu mergecfg or run sysmerge manually"
+    msg_notice
+    msg_notice "Also remember to look at http://www.openbsd.org/faq/current.html"
+    msg_notice "to see if you need to do any manual labour"
 }
 
 # bail out on errors
@@ -146,7 +146,7 @@ msg_start()
 }
 
 # standardized way to message a user
-notice()
+msg_notice()
 {
     echo " *** NOTICE: $*"
 }
@@ -237,7 +237,7 @@ download_files()
     determine_needed_files
 
     if [ "$NEEDED_FILES" = "" ]; then
-        notice "No new files found at $MIRROR"
+        msg_notice "No new files found at $MIRROR"
     else
         for FILE in $NEEDED_FILES; do
             $DFUN $FILE
@@ -381,7 +381,7 @@ install_bootblocks()
         $SUDO ${TARGETROOT}usr/mdec/installboot ${TARGETROOT}boot ${TARGETROOT}usr/mdec/biosboot $BOOTDISK
         echo "done"
     else
-        notice "NEW_BOOTBLOCKS disabled. Not installing new MBR."
+        msg_notice "NEW_BOOTBLOCKS disabled. Not installing new MBR."
     fi
 }
 
@@ -392,7 +392,7 @@ merge_etc()
 
     X="-s"
     for FILE in $ETC; do
-        notice "Merging configuration file $FILE$VERSION.tgz"
+        msg_notice "Merging configuration file $FILE$VERSION.tgz"
         if [ "$FILE" = "xetc" ]; then
             X="-x"
         fi
