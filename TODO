@@ -1,0 +1,4 @@
+* add hooks system (pre-update, post-update, pre-install, post-install, pre-mergecfg, post-mergecfg)
+* check http://www.openbsd.org/49.html for missing things the script could do
+* make script suitable for upgrading from one release to the next (ie 4.8 -> 4.9)
+
