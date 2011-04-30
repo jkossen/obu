@@ -115,6 +115,13 @@ usage()
 EOF
 }
 
+# bail out on errors
+abort()
+{
+    echo ' !!! Aborted.' >&2
+    exit 1
+}
+
 # mention to the user that the upgrade is done, and suggest a few smart things
 # to do
 msg_final()
@@ -124,13 +131,6 @@ msg_final()
     msg_notice
     msg_notice "Also remember to look at http://www.openbsd.org/faq/current.html"
     msg_notice "to see if you need to do any manual labour"
-}
-
-# bail out on errors
-abort()
-{
-    echo ' !!! Aborted.' >&2
-    exit 1
 }
 
 # standardized way of printing errors
@@ -145,7 +145,7 @@ msg_start()
     echo -n " >>> $* ... "
 }
 
-# standardized way to message a user
+# standardized way to notify a user
 msg_notice()
 {
     echo " *** NOTICE: $*"
