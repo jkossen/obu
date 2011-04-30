@@ -344,7 +344,7 @@ install_files()
                 ;;
             *)
                 msg_start "Installing set $FILE"
-                $SUDO tar zxpf "$DOWNLOADDIR/$FILE$VERSION.tgz" -C "$TARGETROOT"
+                $SUDO tar zxhpf "$DOWNLOADDIR/$FILE$VERSION.tgz" -C "$TARGETROOT"
                 echo "done"
                 ;;
         esac
