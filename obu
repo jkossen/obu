@@ -19,7 +19,10 @@
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #
-# Forked from OpenBSD-binary-upgrade.sh by Han Boetes:
+# Forked way back (I doubt there's any line of code from then left :-)) from
+# OpenBSD-binary-upgrade.sh by Han Boetes:
+#
+#
 #   Id: OpenBSD-binary-upgrade.sh,v 1.7 2003/07/28 23:26:39 han Exp
 #   Copyright 2003 by Han Boetes <han@mijncomputer.nl>
 #   This script is released under the terms of the BSD-license
@@ -43,8 +46,10 @@ TMPROOT='/var/tmp/temproot'
 # program locations
 PAGER='less'
 RSYNC='rsync -L -P --checksum --times'
-# set to '' to disable sudo
-SUDO='sudo'
+#
+# set to 'sudo' to enable sudo, note that this is not recommended, since sudo
+# from the new filesets might not work on the currently running kernel.
+SUDO=''
 FTP='ftp -V'
 #
 # Select the packages you want to download (obu update). You need at least bsd,
@@ -53,7 +58,7 @@ DOWNLOAD='bsd bsd.mp bsd.rd base etc man comp game xfont xetc xserv xbase xshare
 #
 # Select the packages you want to install (obu upgrade). Note that this also
 # determines the order of installation, so put base last in order to prevent
-# library / utility conflicts
+# currently running kernel / library / utility conflicts
 INSTALL='bsd bsd.rd xserv xfont xshare xbase game comp man base'
 #
 # This determines which file will be set to /bsd. If you set it to 'bsd.mp' for
@@ -85,14 +90,18 @@ NEEDED_FILES=""
 # Container for filenames which are already checksummed
 CHECKED_FILES=""
 
+# We need two backups of /sbin/reboot to be able to put the backup of the
+# backup back in the case obu has been run multiple times for this
+# snapshot/release (having /sbin/reboot and /sbin/oreboot being the same files
+# does not really help one).
+REBOOT="${TARGETROOT}sbin/reboot"
+OREBOOT="${TARGETROOT}sbin/oreboot"
+OOREBOOT="${TARGETROOT}sbin/ooreboot"
+
+trap abort INT TERM
+
 #######################################################################
 # Functions
-
-# traps
-define_traps()
-{
-    trap abort 1 2 3 4 5 6 7 8 9
-}
 
 # show usage instructions
 usage()
@@ -120,6 +129,12 @@ abort()
 {
     echo ' !!! Aborted.' >&2
     exit 1
+}
+
+fail()
+{
+    echo 'FAIL!'
+    abort
 }
 
 # mention to the user that the upgrade is done, and suggest a few smart things
@@ -154,12 +169,10 @@ msg_notice()
 # read configuration
 read_config()
 {
-    define_traps
-
     if [ ! -z "$1" -a -f "$1" ]; then
 	    . "$1"
     elif [ ! -z "$1" ]; then
-        msg_error "$1 is no readable file"
+        msg_error "$1 is not a readable file"
         abort
     else
 	    [ -r '/etc/oburc' ] && . '/etc/oburc' || true
@@ -187,8 +200,6 @@ sets_to_filenames()
 # need to be downloaded
 determine_needed_files()
 {
-    define_traps
-
     for FILE in $FILES; do
         msg_start "Checksumming $FILE to determine if it needs to be downloaded: "
         check_sum_file $FILE >/dev/null 2>&1
@@ -205,8 +216,6 @@ determine_needed_files()
 # Download the latest snapshot files
 download_files()
 {
-    define_traps
-
     DFUN="download_file_file"
 
     [ ! -d "$DOWNLOADDIR" ] && mkdir -p "$DOWNLOADDIR"
@@ -243,13 +252,55 @@ download_files()
             $DFUN $FILE
             check_sum_file $FILE
 
-            if [ "$?" = "1" ]; then
-                abort
-            fi
+            [ "$?" = "1" ] && abort
 
             # check done, put FILE in $CHECKED_FILES
             CHECKED_FILES="$CHECKED_FILES $FILE"
         done
+    fi
+}
+
+# Create a backup of the reboot(1) command, since the new one from baseXX.tgz
+# might not work on the currently running kernel
+backup_reboot()
+{
+    if [ -f "$OREBOOT" ]; then
+        SUM1=$(sha256 -q "$REBOOT")
+        SUM2=$(sha256 -q "$OREBOOT")
+
+        if [ "$SUM1" != "$SUM2" ]; then
+            msg_start "Backing up $OREBOOT to $OOREBOOT"
+            $SUDO cp -pf "$OREBOOT" "$OOREBOOT" || fail
+            echo "done"
+
+            msg_start "Backing up $REBOOT to $OREBOOT"
+            $SUDO cp -pf "$REBOOT" "$OREBOOT" || fail
+            echo "done"
+        else
+            msg_notice "$REBOOT and $OREBOOT are the same. Skipping backup"
+        fi
+    fi
+}
+
+# We checksum the existing reboot and oreboot files. obu might have run
+# multiple times without rebooting.
+check_reboot_backup()
+{
+    # TODO: this function is executed after installing new files. What if
+    # the new sha256 (or mv) don't work under the old kernel?
+    if [ -f "${OREBOOT}" ]; then
+        SUM1=$(sha256 -q "$REBOOT")
+        SUM2=$(sha256 -q "$OREBOOT")
+        if [ "$SUM1" = "$SUM2" ]; then
+            msg_notice "$REBOOT and $OREBOOT are the same."
+            if [ -f "$OOREBOOT" ]; then
+                msg_start "Moving back $OOREBOOT to $OREBOOT"
+                $SUDO mv -f "$OOREBOOT" "$OREBOOT" || fail
+                echo "done"
+            else
+                msg_notice "$OOREBOOT does not exist. Unable to place back $OOREBOOT to $OREBOOT"
+            fi
+        fi
     fi
 }
 
@@ -280,8 +331,13 @@ download_file_rsync()
 # Check if the checksum of the downloaded file is correct
 check_sum_file()
 {
-    msg_start "Comparing checksum for $FILE"
+    msg_start "Comparing checksum for $1"
     SUM_SHOULDBE=$(grep \($1\) "$DOWNLOADDIR/SHA256" | awk '{print $NF}')
+
+    if [ ! -f "$DOWNLOADDIR/$1" ]; then
+         msg_error "No such file: $1"
+         abort
+    fi
 
     if [ -z "$SUM_SHOULDBE" ]; then
         # no checksum known
@@ -302,49 +358,47 @@ check_sum_file()
 # check all downloaded files against the sums in SHA256
 check_sum_all()
 {
-    define_traps
-
     CHECK_FILES=""
+    RET=0
 
     # only checksum file if it wasn't already checked
     for FILE in $FILES; do
         NEED_CHECK=1
         for CHECKED_FILE in $CHECKED_FILES; do
-            if [ "$FILE" = "$CHECKED_FILE" ]; then
-                NEED_CHECK=0
-            fi
+            [ "$FILE" = "$CHECKED_FILE" ] && NEED_CHECK=0
         done
 
         if [ "$NEED_CHECK" = 1 ]; then
             check_sum_file "$FILE"
+            [ "$?" != "0" ] && RET=1
         fi
     done
+
+    return $RET
 }
 
 # install downloaded files
 install_files()
 {
-    define_traps
-
     for FILE in $INSTALL; do
         case $FILE in
             bsd|bsd.mp|bsd.rd)
                 # just to be sure, back up old kernel
                 if [ -e "$TARGETROOT$FILE" ]; then
                     msg_start "Backing up $TARGETROOT$FILE to $TARGETROOT$FILE.old"
-                    $SUDO cp -f "$TARGETROOT$FILE" "$TARGETROOT$FILE.old"
+                    $SUDO cp -f "$TARGETROOT$FILE" "$TARGETROOT$FILE.old" || fail
                     echo "done"
                 fi
 
                 msg_start "Installing kernel file $FILE"
-                $SUDO cp -f "$DOWNLOADDIR/$FILE" "$TARGETROOT$FILE"
+                $SUDO cp -f "$DOWNLOADDIR/$FILE" "$TARGETROOT$FILE" || fail
                 echo "done"
                 ;;
             etc|xetc)
                 ;;
             *)
                 msg_start "Installing set $FILE"
-                $SUDO tar zxhpf "$DOWNLOADDIR/$FILE$VERSION.tgz" -C "$TARGETROOT"
+                $SUDO tar zxhpf "$DOWNLOADDIR/$FILE$VERSION.tgz" -C "$TARGETROOT" || fail
                 echo "done"
                 ;;
         esac
@@ -354,11 +408,11 @@ install_files()
     if [ "$BSD" != 'bsd' ]; then
         if [ -f "$TARGETROOT$BSD" ]; then
             msg_start "Renaming $TARGETROOT$BSD to ${TARGETROOT}bsd"
-            $SUDO mv -f "$TARGETROOT$BSD" "${TARGETROOT}bsd"
+            $SUDO mv -f "$TARGETROOT$BSD" "${TARGETROOT}bsd" || fail
             echo "done"
         else
             msg_error "specified kernel file $BSD does not exist"
-            abort
+            return 1
         fi
     fi
 }
@@ -366,19 +420,17 @@ install_files()
 # install new boot blocks (i386 specific)
 install_bootblocks()
 {
-    define_traps
-
     if [ $NEW_BOOTBLOCKS = "yes" ]; then
         msg_start "Backing up old ${TARGETROOT}boot to ${TARGETROOT}boot.old"
-        $SUDO cp -f ${TARGETROOT}boot ${TARGETROOT}boot.old
+        $SUDO cp -f ${TARGETROOT}boot ${TARGETROOT}boot.old || fail
         echo "done"
 
         msg_start "Updating ${TARGETROOT}boot"
-        $SUDO cp -f ${TARGETROOT}usr/mdec/boot ${TARGETROOT}boot
+        $SUDO cp -f ${TARGETROOT}usr/mdec/boot ${TARGETROOT}boot || fail
         echo "done"
 
         msg_start "Installing new bootblocks on $BOOTDISK"
-        $SUDO ${TARGETROOT}usr/mdec/installboot ${TARGETROOT}boot ${TARGETROOT}usr/mdec/biosboot $BOOTDISK
+        $SUDO ${TARGETROOT}usr/mdec/installboot ${TARGETROOT}boot ${TARGETROOT}usr/mdec/biosboot $BOOTDISK || fail
         echo "done"
     else
         msg_notice "NEW_BOOTBLOCKS disabled. Not installing new MBR."
@@ -388,8 +440,6 @@ install_bootblocks()
 # use sysmerge to update configuration files
 merge_etc()
 {
-    define_traps
-
     X="-s"
     for FILE in $ETC; do
         msg_notice "Merging configuration file $FILE$VERSION.tgz"
@@ -420,8 +470,12 @@ case $1 in
     upgrade)
         read_config "$2"
         sets_to_filenames
-        [ $CHECKSUM_ON_UPGRADE = "yes" ] && check_sum_all
+        if [ "$CHECKSUM_ON_UPGRADE" = "yes" ]; then
+            check_sum_all || abort
+        fi
+        backup_reboot
         install_files
+        check_reboot_backup
         install_bootblocks
         msg_final
         ;;
@@ -434,7 +488,9 @@ case $1 in
         read_config "$2"
         sets_to_filenames
         download_files
+        backup_reboot
         install_files
+        check_reboot_backup
         install_bootblocks
         merge_etc
         ;;
