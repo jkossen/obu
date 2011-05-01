@@ -76,6 +76,13 @@ MIRROR='ftp://ftp.nluug.nl/pub/OpenBSD/snapshots/i386'
 # download snapshots on one machine and execute upgrade on many machines using
 # NFS mounts
 CHECKSUM_ON_UPGRADE='yes'
+#
+# Hooks: these variables mention custom scripts which are executed at the
+# specified moment. Multiple scripts can be specified seperated by spaces.
+HOOKS_PRE_DOWNLOAD=''
+HOOKS_POST_DOWNLOAD=''
+HOOKS_PRE_INSTALL=''
+HOOKS_POST_INSTALL=''
 
 #######################################################################
 # Initialization, don't change.
@@ -450,6 +457,15 @@ merge_etc()
     done
 }
 
+# Run custom scripts at specific moments
+run_hooks()
+{
+    for HOOK in $*; do
+        msg_notice "executing $HOOK"
+        $HOOK || fail
+    done
+}
+
 #######################################################################
 # run
 case $1 in
@@ -465,7 +481,9 @@ case $1 in
     update)
         read_config "$2"
         sets_to_filenames
+        run_hooks $HOOKS_PRE_DOWNLOAD
         download_files
+        run_hooks $HOOKS_POST_DOWNLOAD
         ;;
     upgrade)
         read_config "$2"
@@ -474,7 +492,9 @@ case $1 in
             check_sum_all || abort
         fi
         backup_reboot
+        run_hooks $HOOKS_PRE_INSTALL
         install_files
+        run_hooks $HOOKS_POST_INSTALL
         check_reboot_backup
         install_bootblocks
         msg_final
@@ -487,9 +507,13 @@ case $1 in
     full)
         read_config "$2"
         sets_to_filenames
+        run_hooks $HOOKS_PRE_DOWNLOAD
         download_files
+        run_hooks $HOOKS_POST_DOWNLOAD
         backup_reboot
+        run_hooks $HOOKS_PRE_INSTALL
         install_files
+        run_hooks $HOOKS_POST_INSTALL
         check_reboot_backup
         install_bootblocks
         merge_etc
