@@ -148,11 +148,15 @@ fail()
 # to do
 msg_final()
 {
+    echo
     msg_notice "Done installing files!"
-    msg_notice "Remember to run obu mergecfg or run sysmerge manually"
-    msg_notice
-    msg_notice "Also remember to look at http://www.openbsd.org/faq/current.html"
-    msg_notice "to see if you need to do any manual labour"
+    msg_notice "There are a couple of things to remember:"
+    msg_notice ""
+    msg_notice "* run obu mergecfg or run sysmerge manually"
+    msg_notice "* look at http://www.openbsd.org/faq/current.html to see if you"
+    msg_notice "  need to do any manual labour"
+    msg_notice "* reboot into the new kernel. If /reboot does not work, use"
+    msg_notice "  /oreboot or /ooreboot if it exists."
 }
 
 # standardized way of printing errors
@@ -165,6 +169,13 @@ msg_error()
 msg_start()
 {
     echo -n " >>> $* ... "
+}
+
+# standardized way to inform the user an action started with "msg_start" has
+# finished correctly
+msg_done()
+{
+    msg_done
 }
 
 # standardized way to notify a user
@@ -278,11 +289,11 @@ backup_reboot()
         if [ "$SUM1" != "$SUM2" ]; then
             msg_start "Backing up $OREBOOT to $OOREBOOT"
             $SUDO cp -pf "$OREBOOT" "$OOREBOOT" || fail
-            echo "done"
+            msg_done
 
             msg_start "Backing up $REBOOT to $OREBOOT"
             $SUDO cp -pf "$REBOOT" "$OREBOOT" || fail
-            echo "done"
+            msg_done
         else
             msg_notice "$REBOOT and $OREBOOT are the same. Skipping backup"
         fi
@@ -303,7 +314,7 @@ check_reboot_backup()
             if [ -f "$OOREBOOT" ]; then
                 msg_start "Moving back $OOREBOOT to $OREBOOT"
                 $SUDO mv -f "$OOREBOOT" "$OREBOOT" || fail
-                echo "done"
+                msg_done
             else
                 msg_notice "$OOREBOOT does not exist. Unable to place back $OOREBOOT to $OREBOOT"
             fi
@@ -316,7 +327,7 @@ download_file_file()
 {
     echo -n "         $1 ... "
     cp -fp "${MIRROR#file://}/$1" "$DOWNLOADDIR/$1"
-    echo "done"
+    msg_done
 }
 
 # Download a file through FTP
@@ -324,7 +335,7 @@ download_file_ftp()
 {
     echo -n "         $1 ... "
     $FTP "$MIRROR/$1" -o "$DOWNLOADDIR/$1"
-    echo "done"
+    msg_done
 }
 
 # Download a file through rsync
@@ -332,7 +343,7 @@ download_file_rsync()
 {
     echo -n "         $1 ... "
     $RSYNC "$MIRROR/$1" "$DOWNLOADDIR/$1"
-    echo "done"
+    msg_done
 }
 
 # Check if the checksum of the downloaded file is correct
@@ -348,7 +359,7 @@ check_sum_file()
 
     if [ -z "$SUM_SHOULDBE" ]; then
         # no checksum known
-        echo "unknown"
+        echo "UNKNOWN"
         return 2
     else
         SUM_IS=$(sha256 -q "$DOWNLOADDIR/$1")
@@ -394,19 +405,19 @@ install_files()
                 if [ -e "$TARGETROOT$FILE" ]; then
                     msg_start "Backing up $TARGETROOT$FILE to $TARGETROOT$FILE.old"
                     $SUDO cp -f "$TARGETROOT$FILE" "$TARGETROOT$FILE.old" || fail
-                    echo "done"
+                    msg_done
                 fi
 
                 msg_start "Installing kernel file $FILE"
                 $SUDO cp -f "$DOWNLOADDIR/$FILE" "$TARGETROOT$FILE" || fail
-                echo "done"
+                msg_done
                 ;;
             etc|xetc)
                 ;;
             *)
                 msg_start "Installing set $FILE"
                 $SUDO tar zxhpf "$DOWNLOADDIR/$FILE$VERSION.tgz" -C "$TARGETROOT" || fail
-                echo "done"
+                msg_done
                 ;;
         esac
     done
@@ -416,7 +427,7 @@ install_files()
         if [ -f "$TARGETROOT$BSD" ]; then
             msg_start "Renaming $TARGETROOT$BSD to ${TARGETROOT}bsd"
             $SUDO mv -f "$TARGETROOT$BSD" "${TARGETROOT}bsd" || fail
-            echo "done"
+            msg_done
         else
             msg_error "specified kernel file $BSD does not exist"
             return 1
@@ -430,15 +441,15 @@ install_bootblocks()
     if [ $NEW_BOOTBLOCKS = "yes" ]; then
         msg_start "Backing up old ${TARGETROOT}boot to ${TARGETROOT}boot.old"
         $SUDO cp -f ${TARGETROOT}boot ${TARGETROOT}boot.old || fail
-        echo "done"
+        msg_done
 
         msg_start "Updating ${TARGETROOT}boot"
         $SUDO cp -f ${TARGETROOT}usr/mdec/boot ${TARGETROOT}boot || fail
-        echo "done"
+        msg_done
 
         msg_start "Installing new bootblocks on $BOOTDISK"
         $SUDO ${TARGETROOT}usr/mdec/installboot ${TARGETROOT}boot ${TARGETROOT}usr/mdec/biosboot $BOOTDISK || fail
-        echo "done"
+        msg_done
     else
         msg_notice "NEW_BOOTBLOCKS disabled. Not installing new MBR."
     fi
