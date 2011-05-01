@@ -35,8 +35,10 @@ file:           path to configuration file to use
 
 FEATURES:
 
-    * Able to download via either HTTP, FTP, RSYNC or filesystem (eg NFS
+    * Ability to download via either HTTP, FTP, RSYNC or filesystem (eg NFS
       mounts)
+    * Creates backup of /reboot to /oreboot, and /oreboot to /ooreboot if they
+      differ, so we have a good chance of having a working reboot command
     * Ability to install into a custom root (eg NFS mounts)
     * Ability to disable checksumming on obu upgrade. Comes in handy when
       downloading snapshots on one machine, share them via NFS to many others
@@ -44,6 +46,8 @@ FEATURES:
     * Verifies if downloaded files are corrupt (by checking SHA256 sums)
     * Only downloads files which do not match the checksum
     * Only installs if all files match their checksums
-    * sudo support (only run as root when installing files)
+    * NOT RECOMMENDED: sudo support (only run as root when installing files).
+      This might not work because of the new sudo not working on the currently
+      running kernel, so it's disabled by default.
     * No dependencies other than rsync if you want to use that
 
