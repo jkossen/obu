@@ -175,7 +175,7 @@ msg_start()
 # finished correctly
 msg_done()
 {
-    msg_done
+    echo 'done'
 }
 
 # standardized way to notify a user
