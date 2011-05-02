@@ -69,7 +69,7 @@ BSD='bsd'
 ETC='etc xetc'
 #
 # Set the mirror to the location from where you want to download
-MIRROR='ftp://ftp.nluug.nl/pub/OpenBSD/snapshots/i386'
+MIRROR="ftp://ftp.nluug.nl/pub/OpenBSD/snapshots/$(uname -m)"
 #
 # Checksums are calculated when downloading, do you want to check them when
 # executing 'obu upgrade' as well? You might want to set it to 'no' if you
@@ -240,10 +240,8 @@ download_files()
 
     cd "$DOWNLOADDIR"
 
-    msg_start "Fetching from $MIRROR:"
-
     if [ ${MIRROR#file://} != $MIRROR ]; then
-        download_files file
+        DFUN="download_file_file"
     elif [ ${MIRROR#rsync://} != $MIRROR ]; then
         DFUN="download_file_rsync"
     elif [ ${MIRROR#ftp://} != $MIRROR ]; then
@@ -257,7 +255,8 @@ download_files()
 
     # First download checksum file
     msg_start "Fetching SHA256 from $MIRROR:"
-    $DFUN SHA256
+    $DFUN SHA256 || fail
+    msg_done
 
     # Use checksum file to see which files are outdated/corrupt and need to be
     # downloaded
@@ -325,25 +324,20 @@ check_reboot_backup()
 # Download a file from a local directory (or network mount)
 download_file_file()
 {
-    echo -n "         $1 ... "
     cp -fp "${MIRROR#file://}/$1" "$DOWNLOADDIR/$1"
-    msg_done
 }
 
 # Download a file through FTP
 download_file_ftp()
 {
-    echo -n "         $1 ... "
+    echo
     $FTP "$MIRROR/$1" -o "$DOWNLOADDIR/$1"
-    msg_done
 }
 
 # Download a file through rsync
 download_file_rsync()
 {
-    echo -n "         $1 ... "
     $RSYNC "$MIRROR/$1" "$DOWNLOADDIR/$1"
-    msg_done
 }
 
 # Check if the checksum of the downloaded file is correct
@@ -354,7 +348,7 @@ check_sum_file()
 
     if [ ! -f "$DOWNLOADDIR/$1" ]; then
          msg_error "No such file: $1"
-         abort
+         return 1
     fi
 
     if [ -z "$SUM_SHOULDBE" ]; then
