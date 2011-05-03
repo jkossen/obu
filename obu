@@ -193,8 +193,8 @@ read_config()
         msg_error "$1 is not a readable file"
         abort
     else
-	    [ -r '/etc/oburc' ] && . '/etc/oburc' || true
-	    [ -r "$HOME/.oburc" ] && . "$HOME/.oburc" || true
+        [ -r '/etc/oburc' ] && . '/etc/oburc' || true
+        [ -r "$HOME/.oburc" ] && . "$HOME/.oburc" || true
     fi
 }
 
