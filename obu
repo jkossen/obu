@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Current version: 1.7 (2011-04-28)
+# Current version: 1.8 (2011-05-04)
 #
 # obu, an OpenBSD binary upgrade script. Trying to be handy for
 # tracking -current snapshots.
@@ -115,19 +115,21 @@ usage()
 {
     cat <<EOF
 
-	USAGE:
-	obu <update|upgrade|mergecfg|check|bootblocks|full> [file]
+    USAGE:
+    obu <update|upgrade|post-reboot|mergecfg|check|bootblocks|full> [file]
 
-	update:         download/update files
-	upgrade:        check and install downloaded files, install new bootblocks
-	mergecfg:       update configuration (sysmerge)
-	check:          check downloaded files
-	bootblocks:     install new bootblocks (i386 specific)
-	full:           all of it
+    update:         download/update files
+    upgrade:        check and install downloaded files, install new bootblocks
+    post-reboot:    execute parts of upgrade which might have failed under the
+                    old kernel
+    mergecfg:       update configuration (sysmerge)
+    check:          check downloaded files
+    bootblocks:     install new bootblocks (i386 specific)
+    full:           all of it
 
-	file:           path to configuration file to use
+    file:           path to configuration file to use
 
-	Copyright (c) 2004-2011 by Jochem Kossen <jochem@jkossen.nl>
+    Copyright (c) 2004-2011 by Jochem Kossen <jochem@jkossen.nl>
 EOF
 }
 
@@ -138,6 +140,8 @@ abort()
     exit 1
 }
 
+# end a line started with msg_start by echoing 'FAIL!' indicating the action
+# failed. Then, abort.
 fail()
 {
     echo 'FAIL!'
@@ -303,8 +307,6 @@ backup_reboot()
 # multiple times without rebooting.
 check_reboot_backup()
 {
-    # TODO: this function is executed after installing new files. What if
-    # the new sha256 (or mv) don't work under the old kernel?
     if [ -f "${OREBOOT}" ]; then
         SUM1=$(sha256 -q "$REBOOT")
         SUM2=$(sha256 -q "$OREBOOT")
@@ -389,24 +391,58 @@ check_sum_all()
     return $RET
 }
 
+# install given kernel file into given target file. Creates a backup .old file
+# first.
+#
+# from faq/upgrade49.html: Note the extra steps for copying over the primary
+# kernel: those are done to ensure that there is always a valid copy of the
+# kernel on the disk that the system can boot from should there be a really
+# badly timed power outage or system crash.
+install_kernel_file()
+{
+    FILE="$1"
+    TRG="$2"
+
+    msg_start "Installing kernel file $FILE"
+
+    if [ -e "$TRG" ]; then
+        if [ -e "${TRG}.old" ]; then
+            $SUDO rm -f "${TRG}.old" || fail
+        fi
+        $SUDO ln "$TRG" "${TRG}.old" || fail
+    fi
+
+    $SUDO cp -f "$DOWNLOADDIR/$FILE" "${TRG}.new" || fail
+    $SUDO mv -f "${TRG}.new" "$TRG" || fail
+
+    msg_done
+}
+
 # install downloaded files
 install_files()
 {
     for FILE in $INSTALL; do
         case $FILE in
-            bsd|bsd.mp|bsd.rd)
-                # just to be sure, back up old kernel
-                if [ -e "$TARGETROOT$FILE" ]; then
-                    msg_start "Backing up $TARGETROOT$FILE to $TARGETROOT$FILE.old"
-                    $SUDO cp -f "$TARGETROOT$FILE" "$TARGETROOT$FILE.old" || fail
-                    msg_done
+            bsd)
+                TRG="${TARGETROOT}${FILE}"
+                if [ "$BSD" != "$FILE" ]; then
+                    TRG="${TARGETROOT}bsd.sp"
                 fi
-
-                msg_start "Installing kernel file $FILE"
-                $SUDO cp -f "$DOWNLOADDIR/$FILE" "$TARGETROOT$FILE" || fail
-                msg_done
+                install_kernel_file "$FILE" "$TRG"
+                ;;
+            bsd.mp)
+                TRG="${TARGETROOT}${FILE}"
+                if [ "$BSD" = "$FILE" ]; then
+                    TRG="${TARGETROOT}bsd"
+                fi
+                install_kernel_file "$FILE" "$TRG"
+                ;;
+            bsd.rd)
+                TRG="${TARGETROOT}${FILE}"
+                install_kernel_file "$FILE" "$TRG"
                 ;;
             etc|xetc)
+                # dealt with in another function
                 ;;
             *)
                 msg_start "Installing set $FILE"
@@ -415,18 +451,6 @@ install_files()
                 ;;
         esac
     done
-
-    # replace /bsd with the specified kernel file
-    if [ "$BSD" != 'bsd' ]; then
-        if [ -f "$TARGETROOT$BSD" ]; then
-            msg_start "Renaming $TARGETROOT$BSD to ${TARGETROOT}bsd"
-            $SUDO mv -f "$TARGETROOT$BSD" "${TARGETROOT}bsd" || fail
-            msg_done
-        else
-            msg_error "specified kernel file $BSD does not exist"
-            return 1
-        fi
-    fi
 }
 
 # install new boot blocks (i386 specific)
@@ -434,15 +458,15 @@ install_bootblocks()
 {
     if [ $NEW_BOOTBLOCKS = "yes" ]; then
         msg_start "Backing up old ${TARGETROOT}boot to ${TARGETROOT}boot.old"
-        $SUDO cp -f ${TARGETROOT}boot ${TARGETROOT}boot.old || fail
+        $SUDO cp -f "${TARGETROOT}boot" "${TARGETROOT}boot.old" || fail
         msg_done
 
         msg_start "Updating ${TARGETROOT}boot"
-        $SUDO cp -f ${TARGETROOT}usr/mdec/boot ${TARGETROOT}boot || fail
+        $SUDO cp -f "${TARGETROOT}usr/mdec/boot" "${TARGETROOT}boot" || fail
         msg_done
 
         msg_start "Installing new bootblocks on $BOOTDISK"
-        $SUDO ${TARGETROOT}usr/mdec/installboot ${TARGETROOT}boot ${TARGETROOT}usr/mdec/biosboot $BOOTDISK || fail
+        $SUDO "${TARGETROOT}usr/mdec/installboot" "${TARGETROOT}boot" "${TARGETROOT}usr/mdec/biosboot" $BOOTDISK || fail
         msg_done
     else
         msg_notice "NEW_BOOTBLOCKS disabled. Not installing new MBR."
@@ -499,6 +523,14 @@ case $1 in
         backup_reboot
         run_hooks $HOOKS_PRE_INSTALL
         install_files
+        run_hooks $HOOKS_POST_INSTALL
+        check_reboot_backup
+        install_bootblocks
+        msg_final
+        ;;
+    post-reboot)
+        read_config "$2"
+        sets_to_filenames
         run_hooks $HOOKS_POST_INSTALL
         check_reboot_backup
         install_bootblocks
