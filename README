@@ -24,12 +24,14 @@ obu is a script for tracking OpenBSD -current snapshots
 USAGE:
 obu <fetch|upgrade|upgradecfg|check|bootblocks|full> [file]
 
-fetch:          download/update files
+update:         download/update files
 upgrade:        check and install downloaded files, install new bootblocks
-upgradecfg:     update configuration (sysmerge)
+post-reboot     execute parts of upgrade which might have failed under the
+                old kernel
+mergecfg:       update configuration (sysmegrge)
 check:          check downloaded files
 bootblocks:     install new bootblocks (i386 specific)
-full:           all of it
+full:           update, upgrade, mergecfg and bootblocks
 
 file:           path to configuration file to use (default: /etc/oburc or
                 $HOME/.oburc)
@@ -41,6 +43,8 @@ FEATURES:
 
     * Creates backup of /reboot to /oreboot, and /oreboot to /ooreboot if they
       differ, so we have a good chance of having a working reboot command
+
+    * Backs up your kernel files (to $kernel.old)
 
     * Support for running custom scripts at specific moments using hooks.
 
