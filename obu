@@ -482,7 +482,7 @@ merge_etc()
         if [ "$FILE" = "xetc" ]; then
             X="-x"
         fi
-        $SUDO sysmerge $X $DOWNLOADDIR/$FILE$VERSION.tgz
+        $SUDO sysmerge $X "$DOWNLOADDIR/$FILE$VERSION.tgz" || fail
     done
 }
 
@@ -491,7 +491,7 @@ run_hooks()
 {
     for HOOK in $*; do
         msg_notice "executing $HOOK"
-        $HOOK || fail
+        "$HOOK" || fail
     done
 }
 
