@@ -240,9 +240,11 @@ download_files()
 {
     DFUN="download_file_file"
 
-    [ ! -d "$DOWNLOADDIR" ] && mkdir -p "$DOWNLOADDIR"
+    if [ ! -d "$DOWNLOADDIR" ]; then
+        mkdir -p "$DOWNLOADDIR" || fail
+    fi
 
-    cd "$DOWNLOADDIR"
+    cd "$DOWNLOADDIR" || fail
 
     if [ ${MIRROR#file://} != $MIRROR ]; then
         DFUN="download_file_file"
@@ -270,7 +272,7 @@ download_files()
         msg_notice "No new files found at $MIRROR"
     else
         for FILE in $NEEDED_FILES; do
-            $DFUN $FILE
+            $DFUN $FILE || fail
             check_sum_file $FILE
 
             [ "$?" = "1" ] && abort
